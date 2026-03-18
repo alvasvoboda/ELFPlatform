@@ -7,7 +7,7 @@ import { AgentChat } from './components/AgentChat';
 import { MorningBriefing } from './components/MorningBriefing';
 import { VendorPerformance } from './components/VendorPerformance';
 import { api } from './lib/api';
-import { supabase } from './lib/supabase';
+import { supabase, ensureAuthenticated } from './lib/supabase';
 import { DataPoint, AnalysisResult, Forecast, Anomaly, AnomalyGuidance as AnomalyGuidanceType, ChatMessage, VendorMetrics } from './types';
 
 type TabType = 'briefing' | 'overview' | 'forecast' | 'anomalies' | 'agent';
@@ -33,13 +33,19 @@ function App() {
   });
 
   useEffect(() => {
-    generateData('day_ahead_full');
+    const initializeApp = async () => {
+      await ensureAuthenticated();
+      generateData('day_ahead_full');
+    };
+    initializeApp();
   }, []);
 
   const generateData = async (pattern: string) => {
     setIsLoading(true);
     setCurrentPattern(pattern);
     try {
+      await ensureAuthenticated();
+
       const result = await api.generateData({
         num_points: 500,
         pattern,
@@ -70,6 +76,8 @@ function App() {
   const runAnalysis = async () => {
     setIsLoading(true);
     try {
+      await ensureAuthenticated();
+
       const result = await api.analyze(data, 'comprehensive');
       setAnalysisResult(result);
 
@@ -88,6 +96,8 @@ function App() {
   const runForecast = async () => {
     setIsLoading(true);
     try {
+      await ensureAuthenticated();
+
       const result = await api.forecast(data, 48);
       setForecast(result);
 
@@ -106,6 +116,8 @@ function App() {
   const detectAnomalies = async () => {
     setIsLoading(true);
     try {
+      await ensureAuthenticated();
+
       const result = await api.detectAnomalies(data, 0.95, currentPattern);
       setAnomalies(result.summary);
       setAnomalyGuidance(result.guidance);
@@ -133,6 +145,8 @@ function App() {
     setIsChatLoading(true);
 
     try {
+      await ensureAuthenticated();
+
       const result = await api.queryAgent(message, { dataPoints: data.length });
 
       const agentMessage: ChatMessage = {
