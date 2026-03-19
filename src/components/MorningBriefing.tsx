@@ -1,194 +1,322 @@
-import React, { useEffect, useState } from 'react';
-import { AlertCircle, TrendingUp, TrendingDown, CheckCircle, X } from 'lucide-react';
-import { DataPoint, Anomaly, VendorMetrics, Alert, ConfidenceAssessment } from '../types';
-import { api } from '../lib/api';
+import React, { useMemo } from 'react';
+import { AlertTriangle, TrendingUp, TrendingDown, Copy, CheckCircle } from 'lucide-react';
+import { DataPoint, Forecast } from '../types';
 
 interface MorningBriefingProps {
   historicalData: DataPoint[];
-  anomalies: Anomaly[];
-  vendorForecast?: DataPoint[];
-  vendorMetrics?: VendorMetrics;
+  forecast?: Forecast;
+}
+
+interface HourlyBid {
+  hourEnding: number;
+  forecastLoad: number;
+  uncertaintyBand: number;
+  uncertaintyPercent: number;
+  bidDirection: 'as-forecast' | 'up' | 'down';
+  bidAdjustment: number;
+  riskLevel: 'HIGH' | 'MEDIUM' | 'LOW';
 }
 
 export const MorningBriefing: React.FC<MorningBriefingProps> = ({
   historicalData,
-  anomalies,
-  vendorForecast,
-  vendorMetrics,
+  forecast,
 }) => {
-  const [confidence, setConfidence] = useState<ConfidenceAssessment | null>(null);
-  const [alerts, setAlerts] = useState<Alert[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [copied, setCopied] = React.useState(false);
 
-  useEffect(() => {
-    const loadBriefingData = async () => {
-      setLoading(true);
-      try {
-        if (vendorForecast && vendorMetrics) {
-          const confidenceResult = await api.calculateForecastConfidence(
-            vendorForecast,
-            historicalData,
-            vendorMetrics
-          );
-          setConfidence(confidenceResult);
-        }
+  const hourlyBids = useMemo<HourlyBid[]>(() => {
+    if (!forecast || forecast.forecast_data.values.length < 24) {
+      return Array.from({ length: 24 }, (_, i) => ({
+        hourEnding: i + 1,
+        forecastLoad: 0,
+        uncertaintyBand: 0,
+        uncertaintyPercent: 0,
+        bidDirection: 'as-forecast' as const,
+        bidAdjustment: 0,
+        riskLevel: 'LOW' as const,
+      }));
+    }
 
-        const alertsResult = await api.generateAlerts(
-          historicalData,
-          anomalies,
-          vendorForecast,
-          vendorMetrics
-        );
-        setAlerts(alertsResult.alerts);
-      } catch (error) {
-        console.error('Error loading briefing data:', error);
-      } finally {
-        setLoading(false);
+    const forecastValues = forecast.forecast_data.values.slice(0, 24);
+
+    return forecastValues.map((load, index) => {
+      const hourEnding = index + 1;
+
+      let uncertaintyPercent = 2;
+      if (hourEnding >= 7 && hourEnding <= 10) {
+        uncertaintyPercent = 4;
+      } else if (hourEnding >= 14 && hourEnding <= 20) {
+        uncertaintyPercent = 5;
+      } else if (hourEnding >= 21 || hourEnding <= 6) {
+        uncertaintyPercent = 2;
+      } else {
+        uncertaintyPercent = 3;
       }
+
+      const uncertaintyBand = load * (uncertaintyPercent / 100);
+
+      const historicalSameHour = historicalData
+        .filter((_, i) => i % 24 === index)
+        .slice(-7);
+
+      let bidDirection: 'as-forecast' | 'up' | 'down' = 'as-forecast';
+      let bidAdjustment = 0;
+
+      if (historicalSameHour.length > 0) {
+        const avgHistorical = historicalSameHour.reduce((sum, dp) => sum + dp.value, 0) / historicalSameHour.length;
+        const bias = ((avgHistorical - load) / load) * 100;
+
+        if (bias > 2) {
+          bidDirection = 'up';
+          bidAdjustment = Math.round(load * 0.03);
+        } else if (bias < -2) {
+          bidDirection = 'down';
+          bidAdjustment = -Math.round(load * 0.03);
+        }
+      }
+
+      let riskLevel: 'HIGH' | 'MEDIUM' | 'LOW' = 'LOW';
+      if ((hourEnding >= 14 && hourEnding <= 20) && uncertaintyPercent >= 5) {
+        riskLevel = 'HIGH';
+      } else if (bidDirection !== 'as-forecast') {
+        riskLevel = 'MEDIUM';
+      } else if (uncertaintyPercent >= 4) {
+        riskLevel = 'MEDIUM';
+      }
+
+      return {
+        hourEnding,
+        forecastLoad: Math.round(load),
+        uncertaintyBand: Math.round(uncertaintyBand),
+        uncertaintyPercent,
+        bidDirection,
+        bidAdjustment,
+        riskLevel,
+      };
+    });
+  }, [forecast, historicalData]);
+
+  const dailySummary = useMemo(() => {
+    const totalLoad = hourlyBids.reduce((sum, hour) => sum + hour.forecastLoad, 0);
+    const hoursWithAdjustment = hourlyBids.filter(h => h.bidDirection !== 'as-forecast').length;
+
+    const shortRisk = hourlyBids
+      .filter(h => h.bidDirection === 'down')
+      .reduce((sum, hour) => sum + hour.forecastLoad * 0.03, 0);
+
+    const longRisk = hourlyBids
+      .filter(h => h.bidDirection === 'up')
+      .reduce((sum, hour) => sum + hour.forecastLoad * 0.01, 0);
+
+    return {
+      totalLoad: Math.round(totalLoad),
+      hoursWithAdjustment,
+      shortRisk: Math.round(shortRisk),
+      longRisk: Math.round(longRisk),
     };
+  }, [hourlyBids]);
 
-    loadBriefingData();
-  }, [historicalData, anomalies, vendorForecast, vendorMetrics]);
+  const copyBidSheet = async () => {
+    const headers = ['Hour Ending', 'Forecast Load (MW)', 'Uncertainty (±MW)', 'Bid Direction', 'Adjustment (MW)', 'Risk Level'];
+    const rows = hourlyBids.map(hour => [
+      hour.hourEnding,
+      hour.forecastLoad,
+      hour.uncertaintyBand,
+      hour.bidDirection === 'as-forecast' ? 'As Forecast' :
+        hour.bidDirection === 'up' ? `Bid UP +${hour.bidAdjustment} MW` :
+        `Bid DOWN ${hour.bidAdjustment} MW`,
+      hour.bidAdjustment,
+      hour.riskLevel,
+    ]);
 
-  const getConfidenceBadge = (level: string) => {
-    switch (level) {
-      case 'HIGH':
-        return <span className="px-3 py-1 bg-green-100 text-green-700 rounded-full text-sm font-semibold">HIGH</span>;
-      case 'MEDIUM':
-        return <span className="px-3 py-1 bg-yellow-100 text-yellow-700 rounded-full text-sm font-semibold">MEDIUM</span>;
-      case 'LOW':
-        return <span className="px-3 py-1 bg-red-100 text-red-700 rounded-full text-sm font-semibold">LOW</span>;
-      default:
-        return null;
+    const tsvContent = [
+      headers.join('\t'),
+      ...rows.map(row => row.join('\t')),
+    ].join('\n');
+
+    try {
+      await navigator.clipboard.writeText(tsvContent);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch (error) {
+      console.error('Failed to copy to clipboard:', error);
     }
   };
 
-  const getSeverityBadge = (severity: string) => {
-    switch (severity) {
-      case 'high':
-        return <span className="px-2 py-1 bg-red-500 text-white rounded text-xs font-semibold">HIGH</span>;
-      case 'medium':
-        return <span className="px-2 py-1 bg-amber-500 text-white rounded text-xs font-semibold">MEDIUM</span>;
-      case 'low':
-        return <span className="px-2 py-1 bg-blue-500 text-white rounded text-xs font-semibold">LOW</span>;
-      default:
-        return null;
+  const getBidDirectionBadge = (hour: HourlyBid) => {
+    if (hour.bidDirection === 'as-forecast') {
+      return (
+        <span className="inline-flex items-center gap-1 px-3 py-1 bg-green-100 text-green-800 rounded-lg text-xs font-semibold">
+          <CheckCircle size={14} />
+          Bid as forecast
+        </span>
+      );
+    } else if (hour.bidDirection === 'up') {
+      return (
+        <span className="inline-flex items-center gap-1 px-3 py-1 bg-yellow-100 text-yellow-800 rounded-lg text-xs font-semibold">
+          <TrendingUp size={14} />
+          Consider bidding UP +{hour.bidAdjustment} MW
+        </span>
+      );
+    } else {
+      return (
+        <span className="inline-flex items-center gap-1 px-3 py-1 bg-red-100 text-red-800 rounded-lg text-xs font-semibold">
+          <TrendingDown size={14} />
+          Consider bidding DOWN {hour.bidAdjustment} MW
+        </span>
+      );
     }
   };
 
-  const today = new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+  const getRiskBadge = (level: 'HIGH' | 'MEDIUM' | 'LOW') => {
+    if (level === 'HIGH') {
+      return (
+        <span className="inline-flex items-center gap-1 px-2 py-1 bg-red-500 text-white rounded text-xs font-semibold">
+          <AlertTriangle size={12} />
+          HIGH
+        </span>
+      );
+    } else if (level === 'MEDIUM') {
+      return (
+        <span className="inline-flex items-center gap-1 px-2 py-1 bg-amber-500 text-white rounded text-xs font-semibold">
+          MEDIUM
+        </span>
+      );
+    } else {
+      return (
+        <span className="inline-flex items-center gap-1 px-2 py-1 bg-gray-400 text-white rounded text-xs font-semibold">
+          LOW
+        </span>
+      );
+    }
+  };
+
+  const tomorrow = new Date();
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  const tomorrowFormatted = tomorrow.toLocaleDateString('en-US', {
+    weekday: 'long',
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric'
+  });
 
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
-        <h2 className="text-2xl font-bold text-slate-800">Morning Briefing</h2>
-        <div className="text-sm text-slate-600">{today}</div>
+        <div>
+          <h2 className="text-2xl font-bold text-slate-800">Day-Ahead Bid Review</h2>
+          <p className="text-sm text-slate-600 mt-1">Tomorrow: {tomorrowFormatted}</p>
+        </div>
+        <button
+          onClick={copyBidSheet}
+          className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors"
+        >
+          {copied ? (
+            <>
+              <CheckCircle size={18} />
+              Copied!
+            </>
+          ) : (
+            <>
+              <Copy size={18} />
+              Copy Bid Sheet
+            </>
+          )}
+        </button>
       </div>
 
-      {confidence && (
-        <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
-          <div className="flex justify-between items-start mb-4">
-            <h3 className="text-lg font-semibold text-slate-800">Forecast Confidence Assessment</h3>
-            {getConfidenceBadge(confidence.confidence_level)}
-          </div>
-
-          <div className="mb-6">
-            <div className="flex justify-between items-center mb-2">
-              <span className="text-sm font-medium text-slate-700">Confidence Score</span>
-              <span className="text-2xl font-bold text-slate-800">{confidence.confidence_score}/100</span>
-            </div>
-            <div className="w-full bg-slate-200 rounded-full h-4 overflow-hidden">
-              <div
-                className={`h-full rounded-full transition-all ${
-                  confidence.confidence_score >= 70
-                    ? 'bg-gradient-to-r from-green-500 to-green-600'
-                    : confidence.confidence_score >= 40
-                    ? 'bg-gradient-to-r from-yellow-500 to-yellow-600'
-                    : 'bg-gradient-to-r from-red-500 to-red-600'
-                }`}
-                style={{ width: `${confidence.confidence_score}%` }}
-              ></div>
-            </div>
-          </div>
-
-          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
-            <p className="text-sm text-blue-900 font-medium">{confidence.recommendation}</p>
-          </div>
-
-          <div className="space-y-3">
-            {confidence.factors.map((factor, index) => (
-              <div key={index} className="flex items-start gap-3">
-                {factor.impact === 'positive' ? (
-                  <CheckCircle className="text-green-500 flex-shrink-0 mt-0.5" size={20} />
-                ) : factor.impact === 'negative' ? (
-                  <X className="text-red-500 flex-shrink-0 mt-0.5" size={20} />
-                ) : (
-                  <div className="w-5 h-5 rounded-full bg-amber-500 flex-shrink-0 mt-0.5"></div>
-                )}
-                <div className="flex-1">
-                  <div className="text-sm font-medium text-slate-800">{factor.factor}: {factor.detail}</div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
-        <div className="flex justify-between items-center mb-4">
-          <h3 className="text-lg font-semibold text-slate-800">Active Alerts</h3>
-          <span className="text-sm text-slate-600">{alerts.length} total</span>
+      <div className="grid grid-cols-4 gap-4">
+        <div className="bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl shadow-lg p-5 text-white">
+          <div className="text-sm font-medium opacity-90 mb-1">Total Forecast Load</div>
+          <div className="text-3xl font-bold">{dailySummary.totalLoad.toLocaleString()}</div>
+          <div className="text-sm opacity-75 mt-1">MWh</div>
         </div>
 
-        {loading && (
-          <div className="text-center py-8">
-            <div className="inline-block w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
-          </div>
-        )}
+        <div className="bg-gradient-to-br from-amber-500 to-amber-600 rounded-xl shadow-lg p-5 text-white">
+          <div className="text-sm font-medium opacity-90 mb-1">Hours Flagged</div>
+          <div className="text-3xl font-bold">{dailySummary.hoursWithAdjustment}</div>
+          <div className="text-sm opacity-75 mt-1">Bid adjustments needed</div>
+        </div>
 
-        {!loading && alerts.length === 0 && (
-          <div className="text-center py-8 text-slate-500">
-            <CheckCircle className="mx-auto mb-2 text-green-500" size={32} />
-            <p>No active alerts. All systems normal.</p>
-          </div>
-        )}
+        <div className="bg-gradient-to-br from-red-500 to-red-600 rounded-xl shadow-lg p-5 text-white">
+          <div className="text-sm font-medium opacity-90 mb-1">Short-Position Risk</div>
+          <div className="text-3xl font-bold">{dailySummary.shortRisk.toLocaleString()}</div>
+          <div className="text-sm opacity-75 mt-1">MW RT exposure</div>
+        </div>
 
-        {!loading && alerts.length > 0 && (
-          <div className="space-y-3">
-            {alerts.map((alert, index) => (
-              <div key={index} className="border border-slate-200 rounded-lg p-4">
-                <div className="flex justify-between items-start mb-2">
-                  <div className="flex items-start gap-2">
-                    <AlertCircle className="text-amber-500 flex-shrink-0 mt-0.5" size={20} />
-                    <h4 className="font-semibold text-slate-800">{alert.title}</h4>
-                  </div>
-                  {getSeverityBadge(alert.severity)}
-                </div>
-                <p className="text-sm text-slate-600 ml-7">{alert.description}</p>
-                {alert.metadata && Object.keys(alert.metadata).length > 0 && (
-                  <div className="mt-3 ml-7 flex gap-4 text-xs text-slate-500">
-                    {alert.metadata.count !== undefined && (
-                      <div className="flex items-center gap-1">
-                        <span>Count:</span>
-                        <span className="font-semibold">{alert.metadata.count as number}</span>
-                      </div>
-                    )}
-                    {alert.metadata.change_percent !== undefined && (
-                      <div className="flex items-center gap-1">
-                        {(alert.metadata.change_percent as number) > 0 ? (
-                          <TrendingUp className="text-red-500" size={14} />
-                        ) : (
-                          <TrendingDown className="text-green-500" size={14} />
-                        )}
-                        <span className="font-semibold">{Math.abs(alert.metadata.change_percent as number).toFixed(1)}% change</span>
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-            ))}
+        <div className="bg-gradient-to-br from-orange-500 to-orange-600 rounded-xl shadow-lg p-5 text-white">
+          <div className="text-sm font-medium opacity-90 mb-1">Long-Position Risk</div>
+          <div className="text-3xl font-bold">{dailySummary.longRisk.toLocaleString()}</div>
+          <div className="text-sm opacity-75 mt-1">MW excess capacity</div>
+        </div>
+      </div>
+
+      <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full">
+            <thead className="bg-slate-50 border-b border-slate-200">
+              <tr>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">
+                  Hour Ending
+                </th>
+                <th className="px-4 py-3 text-right text-xs font-semibold text-slate-700 uppercase tracking-wider">
+                  Forecast Load (MW)
+                </th>
+                <th className="px-4 py-3 text-right text-xs font-semibold text-slate-700 uppercase tracking-wider">
+                  Uncertainty (±MW)
+                </th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">
+                  Bid Direction
+                </th>
+                <th className="px-4 py-3 text-center text-xs font-semibold text-slate-700 uppercase tracking-wider">
+                  Risk Flag
+                </th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {hourlyBids.map((hour) => (
+                <tr
+                  key={hour.hourEnding}
+                  className={`hover:bg-slate-50 transition-colors ${
+                    hour.riskLevel === 'HIGH' ? 'bg-red-50/30' :
+                    hour.riskLevel === 'MEDIUM' ? 'bg-amber-50/30' : ''
+                  }`}
+                >
+                  <td className="px-4 py-3 text-sm font-semibold text-slate-800">
+                    HE {hour.hourEnding}
+                  </td>
+                  <td className="px-4 py-3 text-sm text-right font-mono text-slate-700">
+                    {hour.forecastLoad.toLocaleString()}
+                  </td>
+                  <td className="px-4 py-3 text-sm text-right text-slate-600">
+                    <span className="font-mono">±{hour.uncertaintyBand.toLocaleString()}</span>
+                    <span className="text-xs text-slate-500 ml-1">({hour.uncertaintyPercent}%)</span>
+                  </td>
+                  <td className="px-4 py-3 text-sm">
+                    {getBidDirectionBadge(hour)}
+                  </td>
+                  <td className="px-4 py-3 text-sm text-center">
+                    {getRiskBadge(hour.riskLevel)}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+        <div className="flex items-start gap-3">
+          <AlertTriangle className="text-blue-600 flex-shrink-0 mt-0.5" size={20} />
+          <div className="text-sm text-blue-900">
+            <p className="font-semibold mb-1">Bidding Guidance</p>
+            <p>
+              This review uses historical bias analysis to suggest bid adjustments. HIGH risk hours
+              occur during peak demand with elevated uncertainty. Consider hedging strategies for
+              hours with consistent directional bias. Short-position exposure (under-bidding)
+              carries higher costs than long-position (over-bidding) in most markets.
+            </p>
           </div>
-        )}
+        </div>
       </div>
     </div>
   );

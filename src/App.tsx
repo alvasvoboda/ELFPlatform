@@ -326,12 +326,7 @@ function App() {
           {activeTab === 'briefing' && (
             <MorningBriefing
               historicalData={data}
-              anomalies={anomalies}
-              vendorForecast={forecast ? forecast.forecast_data.values.map((v, i) => ({
-                timestamp: new Date(Date.now() + i * 3600000).toISOString(),
-                value: v,
-              })) : undefined}
-              vendorMetrics={vendorMetrics}
+              forecast={forecast || undefined}
             />
           )}
 
