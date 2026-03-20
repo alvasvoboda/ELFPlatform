@@ -104,9 +104,11 @@ export function Login({ onLogin }: LoginProps) {
             >
               Use Demo Account
             </button>
-            <p className="text-xs text-slate-500 text-center mt-3">
-              Demo credentials: demo@caiso.com / demo123
-            </p>
+            <div className="mt-4 p-3 bg-slate-50 rounded-lg">
+              <p className="text-xs font-semibold text-slate-700 mb-2">Available accounts:</p>
+              <p className="text-xs text-slate-600">Demo: demo@caiso.com / demo123</p>
+              <p className="text-xs text-slate-600">Admin: admin@caiso.com / admin123</p>
+            </div>
           </div>
         </div>
 

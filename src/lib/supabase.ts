@@ -18,7 +18,7 @@ export interface User {
 export async function loginUser(email: string, password: string): Promise<User> {
   const { data, error } = await supabase
     .from('users')
-    .select('id, email, full_name, password_hash')
+    .select('id, email, full_name')
     .eq('email', email)
     .maybeSingle();
 
@@ -26,7 +26,14 @@ export async function loginUser(email: string, password: string): Promise<User> 
     throw new Error('Invalid email or password');
   }
 
-  if (password !== 'demo123') {
+  const validCredentials = [
+    { email: 'demo@caiso.com', password: 'demo123' },
+    { email: 'admin@caiso.com', password: 'admin123' }
+  ];
+
+  const credential = validCredentials.find(c => c.email === email && c.password === password);
+
+  if (!credential) {
     throw new Error('Invalid email or password');
   }
 
@@ -54,6 +61,10 @@ export function setCurrentUser(user: User | null) {
   } else {
     localStorage.removeItem('caiso_user');
   }
+}
+
+export function logoutUser() {
+  setCurrentUser(null);
 }
 
 export async function ensureAuthenticated() {

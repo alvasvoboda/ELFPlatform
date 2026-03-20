@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Zap, TrendingUp, Activity, AlertCircle, BarChart3 } from 'lucide-react';
+import { Zap, TrendingUp, Activity, AlertCircle, BarChart3, LogOut } from 'lucide-react';
 import { TimeSeriesChart } from './components/TimeSeriesChart';
 import { InsightCard } from './components/InsightCard';
 import { AnomalyGuidance } from './components/AnomalyGuidance';
@@ -10,7 +10,7 @@ import { BiasHeatmap } from './components/BiasHeatmap';
 import { BiasSummaryPanel } from './components/BiasSummaryPanel';
 import { Login } from './components/Login';
 import { api } from './lib/api';
-import { loginUser, getCurrentUser, setCurrentUser, User } from './lib/supabase';
+import { loginUser, getCurrentUser, setCurrentUser, logoutUser, User } from './lib/supabase';
 import { generateSyntheticBiasData, getBiasForHour } from './lib/biasCalculator';
 import { DataPoint, AnalysisResult, Forecast, Anomaly, AnomalyGuidance as AnomalyGuidanceType, ChatMessage, VendorMetrics } from './types';
 
@@ -222,6 +222,11 @@ function App() {
     setCurrentUser(loggedInUser);
   };
 
+  const handleLogout = () => {
+    logoutUser();
+    setUser(null);
+  };
+
   if (isCheckingAuth) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-slate-100 flex items-center justify-center">
@@ -238,13 +243,28 @@ function App() {
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-slate-100">
       <div className="max-w-7xl mx-auto px-4 py-8">
         <header className="mb-8">
-          <div className="flex items-center gap-3 mb-2">
-            <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-purple-600 rounded-xl flex items-center justify-center">
-              <Zap className="text-white" size={28} />
+          <div className="flex items-center justify-between mb-2">
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl flex items-center justify-center">
+                <Zap className="text-white" size={28} />
+              </div>
+              <div>
+                <h1 className="text-3xl font-bold text-slate-800">Electricity Load Forecasting Platform</h1>
+                <p className="text-slate-600">AI-powered day-ahead and real-time load forecasting</p>
+              </div>
             </div>
-            <div>
-              <h1 className="text-3xl font-bold text-slate-800">Electricity Load Forecasting Platform</h1>
-              <p className="text-slate-600">AI-powered day-ahead and real-time load forecasting</p>
+            <div className="flex items-center gap-4">
+              <div className="text-right">
+                <p className="text-sm font-medium text-slate-700">{user.full_name}</p>
+                <p className="text-xs text-slate-500">{user.email}</p>
+              </div>
+              <button
+                onClick={handleLogout}
+                className="flex items-center gap-2 px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg transition-all"
+              >
+                <LogOut size={18} />
+                Logout
+              </button>
             </div>
           </div>
         </header>
