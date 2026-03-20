@@ -8,14 +8,17 @@ import { MorningBriefing } from './components/MorningBriefing';
 import { VendorPerformance } from './components/VendorPerformance';
 import { BiasHeatmap } from './components/BiasHeatmap';
 import { BiasSummaryPanel } from './components/BiasSummaryPanel';
+import { Login } from './components/Login';
 import { api } from './lib/api';
-import { supabase, ensureAuthenticated } from './lib/supabase';
+import { loginUser, getCurrentUser, setCurrentUser, User } from './lib/supabase';
 import { generateSyntheticBiasData, getBiasForHour } from './lib/biasCalculator';
 import { DataPoint, AnalysisResult, Forecast, Anomaly, AnomalyGuidance as AnomalyGuidanceType, ChatMessage, VendorMetrics } from './types';
 
 type TabType = 'briefing' | 'overview' | 'forecast' | 'anomalies' | 'agent';
 
 function App() {
+  const [user, setUser] = useState<User | null>(null);
+  const [isCheckingAuth, setIsCheckingAuth] = useState(true);
   const [activeTab, setActiveTab] = useState<TabType>('overview');
   const [data, setData] = useState<DataPoint[]>([]);
   const [analysisResult, setAnalysisResult] = useState<AnalysisResult | null>(null);
@@ -39,8 +42,19 @@ function App() {
   });
 
   useEffect(() => {
-    generateData('day_ahead_full');
+    const checkAuth = async () => {
+      const currentUser = await getCurrentUser();
+      setUser(currentUser);
+      setIsCheckingAuth(false);
+    };
+    checkAuth();
   }, []);
+
+  useEffect(() => {
+    if (user) {
+      generateData('day_ahead_full');
+    }
+  }, [user]);
 
   const generateData = async (pattern: string) => {
     setIsLoading(true);
@@ -202,8 +216,26 @@ function App() {
 
   const actualsForComparison = forecast && showActuals ? data.slice(-forecast.horizon) : undefined;
 
+  const handleLogin = async (email: string, password: string) => {
+    const loggedInUser = await loginUser(email, password);
+    setUser(loggedInUser);
+    setCurrentUser(loggedInUser);
+  };
+
+  if (isCheckingAuth) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-slate-100 flex items-center justify-center">
+        <div className="text-slate-600">Loading...</div>
+      </div>
+    );
+  }
+
+  if (!user) {
+    return <Login onLogin={handleLogin} />;
+  }
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-purple-50">
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-slate-100">
       <div className="max-w-7xl mx-auto px-4 py-8">
         <header className="mb-8">
           <div className="flex items-center gap-3 mb-2">

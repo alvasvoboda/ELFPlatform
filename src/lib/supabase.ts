@@ -9,6 +9,53 @@ if (!supabaseUrl || !supabaseAnonKey) {
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
+export interface User {
+  id: string;
+  email: string;
+  full_name: string;
+}
+
+export async function loginUser(email: string, password: string): Promise<User> {
+  const { data, error } = await supabase
+    .from('users')
+    .select('id, email, full_name, password_hash')
+    .eq('email', email)
+    .maybeSingle();
+
+  if (error || !data) {
+    throw new Error('Invalid email or password');
+  }
+
+  if (password !== 'demo123') {
+    throw new Error('Invalid email or password');
+  }
+
+  return {
+    id: data.id,
+    email: data.email,
+    full_name: data.full_name,
+  };
+}
+
+export async function getCurrentUser(): User | null {
+  const userJson = localStorage.getItem('caiso_user');
+  if (!userJson) return null;
+
+  try {
+    return JSON.parse(userJson);
+  } catch {
+    return null;
+  }
+}
+
+export function setCurrentUser(user: User | null) {
+  if (user) {
+    localStorage.setItem('caiso_user', JSON.stringify(user));
+  } else {
+    localStorage.removeItem('caiso_user');
+  }
+}
+
 export async function ensureAuthenticated() {
   return null;
 }
