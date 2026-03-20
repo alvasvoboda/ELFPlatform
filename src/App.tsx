@@ -146,7 +146,12 @@ function App() {
     setIsChatLoading(true);
 
     try {
-      const result = await api.queryAgent(message, { dataPoints: data.length });
+      const systemPrompt = `You are a CAISO day-ahead load scheduling assistant for a utility analyst. The user is deciding how to bid customer load into the CAISO day-ahead market for tomorrow. Key context: bidding too high means selling back excess awards in real time at potentially low prices; bidding too low means buying additional load in real time at potentially very high prices; the worst outcome is a significant short position during scarcity hours (HE14-20 in summer). When answering questions about forecasts or bid strategy, always anchor your response to specific hours, quantify risk where possible, and state a clear recommended action. Use MW and MWh as units. If you don't have enough data to answer precisely, say so and suggest what data would help.`;
+
+      const result = await api.queryAgent(message, {
+        dataPoints: data.length,
+        systemPrompt
+      });
 
       const agentMessage: ChatMessage = {
         role: 'agent',
@@ -304,7 +309,7 @@ function App() {
             { id: 'overview', label: 'Overview', icon: BarChart3 },
             { id: 'forecast', label: 'Forecast', icon: TrendingUp },
             { id: 'anomalies', label: 'Anomalies', icon: AlertCircle },
-            { id: 'agent', label: 'AI Agent', icon: Zap },
+            { id: 'agent', label: 'Bid Assistant', icon: Zap },
           ].map((tab) => (
             <button
               key={tab.id}
@@ -530,6 +535,8 @@ function App() {
               onSendMessage={handleAgentMessage}
               messages={chatMessages}
               isLoading={isChatLoading}
+              biasPercentage={vendorMetrics.bias}
+              highRiskHours={[14, 15, 16, 17, 18, 19, 20]}
             />
           )}
         </div>
