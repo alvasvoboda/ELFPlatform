@@ -4,12 +4,96 @@ const API_BASE_URL = 'http://localhost:5000/api';
 
 export const api = {
   async generateData(params: { num_points: number; pattern: string; noise_level: number }) {
-    const response = await fetch(`${API_BASE_URL}/generate-data`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(params),
-    });
-    return response.json();
+    try {
+      const response = await fetch(`${API_BASE_URL}/generate-data`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(params),
+      });
+
+      if (!response.ok) {
+        throw new Error('Backend unavailable');
+      }
+
+      return response.json();
+    } catch (error) {
+      console.warn('Backend unavailable, generating synthetic data on client');
+      return this.generateSyntheticData(params);
+    }
+  },
+
+  generateSyntheticData(params: { num_points: number; pattern: string; noise_level: number }) {
+    const { num_points, pattern, noise_level } = params;
+    const baseLoad = 40;
+    const data: DataPoint[] = [];
+
+    for (let i = 0; i < num_points; i++) {
+      const hourOfDay = i % 24;
+      const dayOfWeek = Math.floor(i / 24) % 7;
+      const isWeekend = dayOfWeek >= 5;
+
+      let value = baseLoad;
+
+      if (pattern.includes('day_ahead')) {
+        let dailyPattern: number;
+
+        if (hourOfDay >= 6 && hourOfDay < 9) {
+          dailyPattern = 48 + (hourOfDay - 6) * 2;
+        } else if (hourOfDay >= 9 && hourOfDay < 17) {
+          dailyPattern = 55;
+        } else if (hourOfDay >= 17 && hourOfDay < 20) {
+          dailyPattern = 58;
+        } else if (hourOfDay >= 20 && hourOfDay < 22) {
+          dailyPattern = 50;
+        } else {
+          dailyPattern = 35;
+        }
+
+        if (isWeekend) {
+          dailyPattern *= 0.85;
+        }
+
+        value = dailyPattern;
+
+        if (pattern.includes('seasonal') || pattern.includes('full')) {
+          const seasonal = 12 * Math.sin(2 * Math.PI * i / (24 * 365.25));
+          value += seasonal;
+        }
+
+        if (pattern.includes('trend') || pattern.includes('full')) {
+          const trend = 0.01 * i;
+          value += trend;
+        }
+      } else if (pattern === 'realtime_random_walk') {
+        if (i === 0) {
+          value = baseLoad;
+        } else {
+          value = data[i - 1].value + (Math.random() - 0.5) * 4;
+        }
+      } else if (pattern === 'realtime_spikes') {
+        const hourPattern = 40 + 10 * Math.sin(2 * Math.PI * hourOfDay / 24);
+        value = hourPattern;
+
+        if (Math.random() < 0.03) {
+          value += (Math.random() < 0.5 ? -1 : 1) * 8;
+        }
+      }
+
+      const noise = (Math.random() - 0.5) * 2 * noise_level * value;
+      value += noise;
+
+      const timestamp = new Date(Date.now() - (num_points - i) * 3600000).toISOString();
+      data.push({ timestamp, value });
+    }
+
+    return {
+      data,
+      summary: {
+        count: num_points,
+        pattern,
+        mean: data.reduce((sum, d) => sum + d.value, 0) / num_points,
+      },
+    };
   },
 
   async analyze(data: DataPoint[], analysisType: string = 'comprehensive'): Promise<AnalysisResult> {

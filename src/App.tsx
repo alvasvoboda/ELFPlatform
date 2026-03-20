@@ -100,11 +100,18 @@ function App() {
   };
 
   const runForecast = async () => {
+    if (!data || data.length === 0) {
+      console.error('No data available for forecasting');
+      return;
+    }
+
     setIsLoading(true);
     try {
       await ensureAuthenticated();
 
+      console.log('Generating forecast with', data.length, 'data points');
       const result = await api.forecast(data, 48);
+      console.log('Forecast result:', result);
       setForecast(result);
 
       await supabase.from('forecasts').insert({
