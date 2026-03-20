@@ -8,6 +8,7 @@ interface TimeSeriesChartProps {
   anomalies?: Anomaly[];
   title?: string;
   showErrorStats?: boolean;
+  biasOverlay?: number[];
 }
 
 export const TimeSeriesChart: React.FC<TimeSeriesChartProps> = ({
@@ -17,6 +18,7 @@ export const TimeSeriesChart: React.FC<TimeSeriesChartProps> = ({
   anomalies,
   title,
   showErrorStats = false,
+  biasOverlay,
 }) => {
   const width = 1000;
   const height = 220;
@@ -58,6 +60,14 @@ export const TimeSeriesChart: React.FC<TimeSeriesChartProps> = ({
         data.length
       )
     : '';
+
+  const getBiasColor = (bias: number): string => {
+    if (bias > 3) return 'rgba(185, 28, 28, 0.15)';
+    if (bias > 1) return 'rgba(252, 165, 165, 0.15)';
+    if (bias > -1) return 'rgba(255, 255, 255, 0)';
+    if (bias > -3) return 'rgba(147, 197, 253, 0.15)';
+    return 'rgba(29, 78, 216, 0.15)';
+  };
 
   let errorStats = null;
   if (showErrorStats && forecastData && actualsData) {
@@ -159,6 +169,26 @@ export const TimeSeriesChart: React.FC<TimeSeriesChartProps> = ({
           stroke="rgb(59, 130, 246)"
           strokeWidth="2.5"
         />
+
+        {biasOverlay && forecastData && (
+          <>
+            {biasOverlay.map((bias, i) => {
+              if (i === 0) return null;
+              const x1 = scaleX(data.length + i - 1, data.length + forecastData.length);
+              const x2 = scaleX(data.length + i, data.length + forecastData.length);
+              return (
+                <rect
+                  key={`bias-${i}`}
+                  x={x1}
+                  y={padding.top}
+                  width={x2 - x1}
+                  height={chartHeight}
+                  fill={getBiasColor(bias)}
+                />
+              );
+            })}
+          </>
+        )}
 
         {forecastData && (
           <>

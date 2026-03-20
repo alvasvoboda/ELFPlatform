@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Zap, TrendingUp, Activity, AlertCircle, BarChart3 } from 'lucide-react';
 import { TimeSeriesChart } from './components/TimeSeriesChart';
 import { InsightCard } from './components/InsightCard';
@@ -6,8 +6,11 @@ import { AnomalyGuidance } from './components/AnomalyGuidance';
 import { AgentChat } from './components/AgentChat';
 import { MorningBriefing } from './components/MorningBriefing';
 import { VendorPerformance } from './components/VendorPerformance';
+import { BiasHeatmap } from './components/BiasHeatmap';
+import { BiasSummaryPanel } from './components/BiasSummaryPanel';
 import { api } from './lib/api';
 import { supabase, ensureAuthenticated } from './lib/supabase';
+import { generateSyntheticBiasData, getBiasForHour } from './lib/biasCalculator';
 import { DataPoint, AnalysisResult, Forecast, Anomaly, AnomalyGuidance as AnomalyGuidanceType, ChatMessage, VendorMetrics } from './types';
 
 type TabType = 'briefing' | 'overview' | 'forecast' | 'anomalies' | 'agent';
@@ -24,6 +27,9 @@ function App() {
   const [isChatLoading, setIsChatLoading] = useState(false);
   const [showActuals, setShowActuals] = useState(false);
   const [currentPattern, setCurrentPattern] = useState('day_ahead_full');
+  const [showBiasOverlay, setShowBiasOverlay] = useState(false);
+
+  const biasData = useMemo(() => generateSyntheticBiasData(), []);
 
   const [vendorMetrics] = useState<VendorMetrics>({
     mape: 8.5,
@@ -390,12 +396,29 @@ function App() {
               {forecast && (
                 <>
                   <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
+                    <div className="flex justify-between items-center mb-4">
+                      <h3 className="text-lg font-semibold text-slate-800">48-Hour Load Forecast (MW)</h3>
+                      <button
+                        onClick={() => setShowBiasOverlay(!showBiasOverlay)}
+                        className={`px-4 py-2 rounded-lg text-sm transition-all ${
+                          showBiasOverlay
+                            ? 'bg-blue-500 text-white'
+                            : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                        }`}
+                      >
+                        {showBiasOverlay ? 'Hide' : 'Show'} bias overlay
+                      </button>
+                    </div>
                     <TimeSeriesChart
                       data={data.slice(-48)}
                       forecastData={forecast.forecast_data.values}
                       actualsData={actualsForComparison}
-                      title="48-Hour Load Forecast (MW)"
                       showErrorStats={showActuals}
+                      biasOverlay={
+                        showBiasOverlay
+                          ? forecast.forecast_data.values.map((_, i) => getBiasForHour(biasData, i))
+                          : undefined
+                      }
                     />
                   </div>
 
@@ -415,6 +438,18 @@ function App() {
                       <InsightCard insights={forecast.insights} />
                     </div>
                   )}
+
+                  <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
+                    <h3 className="text-lg font-semibold text-slate-800 mb-6">Bias Diagnostic</h3>
+                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                      <div className="lg:col-span-2">
+                        <BiasHeatmap biasData={biasData} />
+                      </div>
+                      <div>
+                        <BiasSummaryPanel biasData={biasData} />
+                      </div>
+                    </div>
+                  </div>
                 </>
               )}
 
