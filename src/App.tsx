@@ -39,19 +39,13 @@ function App() {
   });
 
   useEffect(() => {
-    const initializeApp = async () => {
-      await ensureAuthenticated();
-      generateData('day_ahead_full');
-    };
-    initializeApp();
+    generateData('day_ahead_full');
   }, []);
 
   const generateData = async (pattern: string) => {
     setIsLoading(true);
     setCurrentPattern(pattern);
     try {
-      await ensureAuthenticated();
-
       const result = await api.generateData({
         num_points: 500,
         pattern,
@@ -82,8 +76,6 @@ function App() {
   const runAnalysis = async () => {
     setIsLoading(true);
     try {
-      await ensureAuthenticated();
-
       const result = await api.analyze(data, 'comprehensive');
       setAnalysisResult(result);
 
@@ -107,8 +99,6 @@ function App() {
 
     setIsLoading(true);
     try {
-      await ensureAuthenticated();
-
       console.log('Generating forecast with', data.length, 'data points');
       const result = await api.forecast(data, 48);
       console.log('Forecast result:', result);
@@ -129,8 +119,6 @@ function App() {
   const detectAnomalies = async () => {
     setIsLoading(true);
     try {
-      await ensureAuthenticated();
-
       const result = await api.detectAnomalies(data, 0.95, currentPattern);
       setAnomalies(result.summary);
       setAnomalyGuidance(result.guidance);
@@ -158,8 +146,6 @@ function App() {
     setIsChatLoading(true);
 
     try {
-      await ensureAuthenticated();
-
       const result = await api.queryAgent(message, { dataPoints: data.length });
 
       const agentMessage: ChatMessage = {
