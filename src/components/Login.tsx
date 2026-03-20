@@ -26,7 +26,7 @@ export function Login({ onLogin }: LoginProps) {
   };
 
   const handleDemoLogin = () => {
-    setEmail('demo@caiso.com');
+    setEmail('demo@example.com');
     setPassword('demo123');
   };
 
@@ -106,8 +106,8 @@ export function Login({ onLogin }: LoginProps) {
             </button>
             <div className="mt-4 p-3 bg-slate-50 rounded-lg">
               <p className="text-xs font-semibold text-slate-700 mb-2">Available accounts:</p>
-              <p className="text-xs text-slate-600">Demo: demo@caiso.com / demo123</p>
-              <p className="text-xs text-slate-600">Admin: admin@caiso.com / admin123</p>
+              <p className="text-xs text-slate-600">Demo: demo@example.com / demo123</p>
+              <p className="text-xs text-slate-600">Admin: admin@elfp.com / admin123</p>
             </div>
           </div>
         </div>

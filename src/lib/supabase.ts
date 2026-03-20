@@ -27,8 +27,8 @@ export async function loginUser(email: string, password: string): Promise<User> 
   }
 
   const validCredentials = [
-    { email: 'demo@caiso.com', password: 'demo123' },
-    { email: 'admin@caiso.com', password: 'admin123' }
+    { email: 'demo@example.com', password: 'demo123' },
+    { email: 'admin@elfp.com', password: 'admin123' }
   ];
 
   const credential = validCredentials.find(c => c.email === email && c.password === password);
